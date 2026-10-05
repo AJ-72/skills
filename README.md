@@ -20,6 +20,18 @@ npx skills add AJ-72/skills
 
 Use this when you've lost track of how a codebase fits together. The skill follows real events through the code ("customer sends a message", "user clicks pay", "player presses jump") and draws each one as an interactive diagram you can zoom, pan, and step through.
 
+![Stepping through a flow: the current hop is highlighted on the map, and the side panel shows what happens and the file:line it was traced from](skills/architecture-canvas/assets/step-view.png)
+*Stepping through "Customer sends a message", dark theme. Step 3 is highlighted on the map and shows the `file:line` it was traced from. Step 1 is dashed because that hop is configured outside the code, so it's marked inferred.*
+
+<details>
+<summary>Overview mode (light theme)</summary>
+
+![Overview of all components grouped into zones](skills/architecture-canvas/assets/overview.png)
+
+</details>
+
+*Both screenshots show the template's built-in example data. A real run replaces it with the components and flows traced from your repo.*
+
 ### How to use
 
 Ask in plain language, for example:
@@ -63,6 +75,26 @@ The trace works on any language. The skill also lists where each of these stacks
 - **Unity:** `UnityEvent`s wired in the Inspector (found by matching script GUIDs to `.meta` files), ScriptableObject event channels, and event buses.
 
 Monoliths are drawn as layers (controller → service → DAO → database). Games are drawn as subsystems laid out input → logic → physics → presentation → persistence.
+
+### How it differs from archify
+
+[archify](https://www.skills.sh/tt-a1i/archify/archify) is a mature, general-purpose diagramming skill. It has five diagram types (architecture, workflow, sequence, dataflow, lifecycle), accepts Mermaid input, works for non-technical subjects too, and exports PNG/SVG/WebM. It also cites source evidence for a repo, pinned to a commit. If you want polished, exportable diagrams of anything, use archify.
+
+architecture-canvas does one narrower job: **"what happens, hop by hop, when X occurs in this codebase?"**
+
+| | architecture-canvas | archify |
+|---|---|---|
+| Main question | How does an event travel through *this* code? | Any diagram: systems, processes, pipelines, states, everyday plans |
+| Shape of output | **One component map with several flows layered on it.** Pick a flow and step through it with ←/→ | One diagram per request, choosing one of 5 types |
+| Reading a flow | Step panel: what happens, why it matters, `file:line`, with the hop highlighted on the map | Relationships and labels on the diagram, with optional trace animation |
+| Unseen hops | Drawn **dashed** and labelled `inferred`, with what the guess rests on | Recorded as explicit unknowns next to the claim |
+| Staying current | Saves to `docs/architecture/` and **refreshes in place** on the next run, keeping node ids stable, so changes show up in git diffs | Each request gets a new timestamped `.archify/` folder, so earlier versions are kept |
+| Stack guidance | Lists where wiring hides in JSP/.NET config, stored procedures, Godot `.tscn`, Unity YAML/GUIDs | General repository-tracing guidance |
+| Footprint | 3 files: `SKILL.md`, an HTML template, a ~130-line Python validator (standard library only) | Node.js CLI with schemas, references, browser checks and exports |
+| Evidence check | Validator checks refs against the working tree, including uncommitted changes | Evidence verified against the pinned commit |
+| Exports and themes | Light and dark themes, plus the HTML file itself | Light and dark themes, PNG/JPEG/WebP/SVG/WebM |
+
+Because it's small, it's cheap to run and easy for smaller models to follow (for example Gemini Flash or GLM in OpenCode). It's also easy to fork for your own stack.
 
 ### Requirements
 
