@@ -33,7 +33,7 @@ Use this when you've lost track of how a codebase fits together. The skill follo
 
 </details>
 
-*Both screenshots show the template's built-in example data. A real run replaces it with the components and flows traced from your repo.*
+*All screenshots show the template's built-in example data. A real run replaces it with the components and flows traced from your repo.*
 
 ### How to use
 
