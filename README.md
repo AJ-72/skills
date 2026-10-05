@@ -23,6 +23,9 @@ Use this when you've lost track of how a codebase fits together. The skill follo
 ![Stepping through a flow: the current hop is highlighted on the map, and the side panel shows what happens and the file:line it was traced from](skills/architecture-canvas/assets/step-view.png)
 *Stepping through "Customer sends a message", dark theme. Step 3 is highlighted on the map and shows the `file:line` it was traced from. Step 1 is dashed because that hop is configured outside the code, so it's marked inferred.*
 
+![The same step in light theme](skills/architecture-canvas/assets/step-view-light.png)
+*The same step in the light theme. The canvas follows your system setting, and you can switch with the ◐ button.*
+
 <details>
 <summary>Overview mode (light theme)</summary>
 
