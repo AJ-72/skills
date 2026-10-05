@@ -13,3 +13,71 @@ npx skills add AJ-72/skills
 | Skill | What it does |
 |-------|--------------|
 | [architecture-canvas](skills/architecture-canvas/SKILL.md) | Traces how events flow through a codebase (web services, JSP/.NET monoliths, Godot/Unity games) and renders a zoomable, pannable canvas you can step through flow by flow. Each arrow cites the `file:line` it was traced from, and a validator checks that those references exist. |
+
+---
+
+## architecture-canvas
+
+Use this when you've lost track of how a codebase fits together. The skill follows real events through the code ("customer sends a message", "user clicks pay", "player presses jump") and draws each one as an interactive diagram you can zoom, pan, and step through.
+
+### How to use
+
+Ask in plain language, for example:
+
+- *"Map what happens when a customer sends a WhatsApp message."*
+- *"Show me the architecture of this app."*
+- *"What happens end to end when a payment webhook fires?"*
+
+The skill loads automatically when the request fits. In Claude Code you can also run `/architecture-canvas`.
+
+### What it does
+
+1. **Picks the flows.** A flow is one trigger event followed to its end. If you only name a system, the skill finds its entry points (routes, webhooks, handlers, cron jobs, queue consumers) and picks the 3–6 that carry the core business, including the reply paths.
+2. **Traces each flow hop by hop.** This covers calls between modules, outbound API calls, database reads and writes, queues, callbacks, and the branches that change where things go. Each step cites the `file:line` where it happens. A hop that can't be seen in the code (for example a webhook URL set in a vendor dashboard) is drawn as a **dashed** arrow, and the step says what the inference is based on.
+3. **Builds the canvas** from a self-contained HTML template: no build step, and no dependencies besides the browser.
+4. **Validates it.** `validate.py` fails on unknown node ids, two nodes in the same grid cell, and `file:line` references that don't exist in the repo. The canvas isn't handed over until it prints `OK`.
+5. **Saves it** to `docs/architecture/<name>.html` in your repo, so the next run refreshes the existing canvas against current code instead of starting over.
+
+### Canvas controls
+
+| Action | Control |
+|--------|---------|
+| Pan | Drag |
+| Zoom | Scroll wheel or pinch |
+| Choose a flow | Flow picker |
+| Step through a flow | ← / → |
+| Fit to screen | `F` |
+| Component details | Click a node (shows what it owns and where its code lives) |
+
+The canvas works in light and dark mode and on phones.
+
+### Supported stacks
+
+The trace works on any language. The skill also lists where each of these stacks hides its wiring in config or editor files, so that hops declared there are cited instead of guessed:
+
+- **Web services and bots:** route tables, webhook handlers, SDK clients, `.env.example`, docker-compose.
+- **Java / JSP:** `web.xml`, `struts-config.xml`, Spring XML and annotations, JNDI datasources.
+- **.NET:** DI and middleware in `Program.cs`/`Startup.cs`, route attributes, `Global.asax`, `web.config`/`appsettings.json`, EF `DbContext`.
+- **Stored procedures:** looks for the SQL in the repo; if it isn't there, the hop is marked inferred.
+- **Godot:** `[connection]` lines in `.tscn`, autoloads in `project.godot`, signals, and groups.
+- **Unity:** `UnityEvent`s wired in the Inspector (found by matching script GUIDs to `.meta` files), ScriptableObject event channels, and event buses.
+
+Monoliths are drawn as layers (controller → service → DAO → database). Games are drawn as subsystems laid out input → logic → physics → presentation → persistence.
+
+### Requirements
+
+- An agent that supports `SKILL.md` and can read files and run shell commands (Claude Code, OpenCode, and others). On claude.ai with pasted code, the validator runs without repo reference checks.
+- Python 3 for `validate.py` (standard library only).
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `SKILL.md` | Instructions the agent follows |
+| `canvas-template.html` | Canvas renderer; the agent fills in its JSON data block (the schema is in its header comment) |
+| `validate.py` | `python validate.py <canvas.html> --root <repo>`: checks node ids, layout, and code references |
+
+### Tips
+
+- With smaller or faster models, spot-check a few `file:line` references. The validator confirms a line exists, not that it's the right line.
+- Re-run the same request after big changes. It refreshes the existing canvas and keeps the node ids stable.
