@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Canvas</title>
+<!--
+DATA SCHEMA: edit only the #canvas-data JSON block at the bottom of this file.
+{
+  "title": "System name",                         panel heading
+  "subtitle": "One line: what this map covers",
+  "zones": [ { "label": "Our bot", "from": 1, "to": 2 } ],
+                                                  background bands spanning grid columns from..to (inclusive)
+  "nodes": [ {
+    "id": "bot",                                  unique, stable across refreshes
+    "label": "Python bot",                        <= 24 chars
+    "kind": "service",                            actor | external | service | module | store | queue
+    "col": 1, "row": 0,                           grid cell, one node per cell; columns run left->right
+    "summary": "One sentence: what it owns.",
+    "files": ["main.py", "chatwoot.py"],          optional: where it lives
+    "notes": "Config, env vars, gotchas"          optional
+  } ],
+  "flows": [ {
+    "id": "inbound",
+    "label": "Customer sends a message",
+    "trigger": "What starts it",
+    "steps": [ {
+      "from": "wa", "to": "bot",                  node ids; from == to draws a self-loop (internal work)
+      "label": "POST /webhook",                   short, drawn on the arrow
+      "detail": "1-3 sentences: what happens and why.",
+      "ref": "main.py:88",                        path:line or path:start-end, relative to repo root
+      "inferred": false                           true = not visible in code; drawn dashed
+    } ]
+  } ]
+}
+-->
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#ffffff; --ink:#1f1e1b; --muted:#6d6a62; --line:#d8d5cc;
+  --zone:#ecebe5; --zone-ink:#8a877e; --accent:#c2410c; --accent-ink:#ffffff; --accent-soft:#fde7d9;
+  --k-actor:#7c3aed; --k-external:#2563eb; --k-service:#0f766e; --k-module:#4d7c0f; --k-store:#b45309; --k-queue:#be185d;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --surface:#1f1e1b; --ink:#eceae4; --muted:#a29f96; --line:#3a3833;
+    --zone:#1b1a18; --zone-ink:#77746c; --accent:#fb923c; --accent-ink:#1a0f07; --accent-soft:#3b2416;
+    --k-actor:#a78bfa; --k-external:#60a5fa; --k-service:#2dd4bf; --k-module:#a3e635; --k-store:#fbbf24; --k-queue:#f472b6;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --surface:#1f1e1b; --ink:#eceae4; --muted:#a29f96; --line:#3a3833;
+  --zone:#1b1a18; --zone-ink:#77746c; --accent:#fb923c; --accent-ink:#1a0f07; --accent-soft:#3b2416;
+  --k-actor:#a78bfa; --k-external:#60a5fa; --k-service:#2dd4bf; --k-module:#a3e635; --k-store:#fbbf24; --k-queue:#f472b6;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:grid;grid-template-columns:minmax(0,1fr) 360px;height:100vh;height:100dvh;overflow:hidden}
+#stage{position:relative;overflow:hidden;touch-action:none;cursor:grab;user-select:none}
+#stage.dragging{cursor:grabbing}
+#svg{width:100%;height:100%;display:block}
+#vp.anim{transition:transform .35s ease}
+#panel{background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:20px 20px 32px}
+@media (max-width:760px){
+  body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 45dvh}
+  #panel{border-left:0;border-top:1px solid var(--line);padding:16px}
+}
+.tools{position:absolute;left:16px;bottom:16px;display:flex;gap:6px}
+.tools button,.flows button,.stepper button,.close{font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.tools button{width:36px;height:36px;font-size:16px}
+.tools button:hover,.flows button:hover,.stepper button:hover{border-color:var(--muted)}
+h1{font-size:18px;margin:0 0 2px}
+.sub{color:var(--muted);margin:0 0 16px}
+.flows{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.flows button{padding:6px 10px;font-size:13px;text-align:left}
+.flows button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.trigger{background:var(--accent-soft);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.trigger span,.label-sm{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stepper{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.stepper button{width:40px;height:32px}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{border:1px solid transparent;border-radius:8px;padding:8px 10px;cursor:pointer}
+.steps li:hover{border-color:var(--line)}
+.steps li.on{border-color:var(--accent);background:var(--accent-soft)}
+.steps .hd{display:flex;gap:8px;align-items:baseline;color:var(--muted);font-size:12px}
+.steps .hd b{color:var(--ink);min-width:18px}
+.steps .lb{font-weight:600;margin-left:26px}
+.steps p{margin:6px 0 6px 26px}
+.steps code,.card code{font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--zone);
+  border-radius:4px;padding:1px 5px;word-break:break-all}
+.steps code{margin-left:26px}
+em.inf{font-style:normal;font-size:11px;color:var(--muted);border:1px dashed var(--muted);border-radius:4px;padding:0 4px;margin-left:6px}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px;position:relative}
+.card h2{font-size:15px;margin:2px 0 6px}
+.card p{margin:6px 0}
+.card ul{margin:4px 0;padding-left:18px}
+.close{position:absolute;top:8px;right:8px;width:28px;height:28px}
+.hint{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* svg */
+.zone rect{fill:var(--zone)}
+.zone text{fill:var(--zone-ink);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.edge{fill:none;stroke:var(--muted);stroke-width:1.6}
+.edge.inf{stroke-dasharray:6 5}
+.edge.ov{opacity:.6}
+.edge.future{opacity:.15}
+.edge.cur{stroke:var(--accent);stroke-width:3}
+.m-a path{fill:var(--muted)} .m-c path{fill:var(--accent)}
+.node{cursor:pointer}
+.node .box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.node .kind{font-size:10px;letter-spacing:.08em;text-transform:uppercase;fill:var(--muted)}
+.node .name{font-size:14px;font-weight:600;fill:var(--ink)}
+.node.dim{opacity:.25}
+.node.hot .box{stroke:var(--accent);stroke-width:2.5}
+.node.sel .box{stroke:var(--ink);stroke-width:2}
+.lbl{cursor:pointer}
+.lbl circle{fill:var(--surface);stroke:var(--muted);stroke-width:1.2}
+.lbl .num{font-size:11px;font-weight:700;text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+.lbl .tag rect{fill:var(--surface);stroke:var(--line)}
+.lbl .tag text{font-size:12px;fill:var(--ink);dominant-baseline:central;text-anchor:middle}
+.lbl.future{opacity:.3}
+.lbl.cur circle{fill:var(--accent);stroke:var(--accent)}
+.lbl.cur .num{fill:var(--accent-ink)}
+.lbl.cur .tag rect{stroke:var(--accent)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="svg" xmlns="http://www.w3.org/2000/svg" aria-label="Architecture diagram">
+    <defs>
+      <marker id="a" class="m-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+      <marker id="c" class="m-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+    </defs>
+    <g id="vp"></g>
+  </svg>
+  <div class="tools">
+    <button data-tool="in" title="Zoom in (+)">+</button>
+    <button data-tool="out" title="Zoom out (-)">&minus;</button>
+    <button data-tool="fit" title="Fit (F)">&#x2922;</button>
+    <button data-tool="theme" title="Toggle theme">&#x25D0;</button>
+  </div>
+</div>
+<aside id="panel"></aside>
+
+<script type="application/json" id="canvas-data">
+{
+  "title": "Example system",
+  "subtitle": "Replace this data block with the traced architecture.",
+  "zones": [
+    { "label": "Outside", "from": 0, "to": 0 },
+    { "label": "Our service", "from": 1, "to": 2 },
+    { "label": "Third parties", "from": 3, "to": 3 }
+  ],
+  "nodes": [
+    { "id": "user", "label": "Customer", "kind": "actor", "col": 0, "row": 0, "summary": "Sends messages from their phone." },
+    { "id": "api", "label": "Web server", "kind": "service", "col": 1, "row": 0, "summary": "Receives webhooks and routes them.", "files": ["main.py"] },
+    { "id": "logic", "label": "Conversation logic", "kind": "module", "col": 2, "row": 0, "summary": "Decides the reply.", "files": ["flow.py"] },
+    { "id": "db", "label": "Database", "kind": "store", "col": 2, "row": 1, "summary": "Conversation state." },
+    { "id": "helpdesk", "label": "Helpdesk", "kind": "external", "col": 3, "row": 0, "summary": "Human agents see the conversation here." }
+  ],
+  "flows": [
+    { "id": "inbound", "label": "Customer sends a message", "trigger": "A message arrives on the provider webhook.",
+      "steps": [
+        { "from": "user", "to": "api", "label": "POST /webhook", "detail": "The provider forwards the message to our webhook.", "ref": "main.py:10", "inferred": true },
+        { "from": "api", "to": "logic", "label": "handle(msg)", "detail": "The route hands the parsed message to the conversation logic.", "ref": "main.py:20" },
+        { "from": "logic", "to": "db", "label": "load state", "detail": "Current conversation state is read.", "ref": "flow.py:5" },
+        { "from": "logic", "to": "logic", "label": "pick reply", "detail": "The state machine picks the next reply.", "ref": "flow.py:30" },
+        { "from": "logic", "to": "helpdesk", "label": "mirror note", "detail": "The exchange is mirrored for human agents.", "ref": "flow.py:40" },
+        { "from": "api", "to": "user", "label": "send reply", "detail": "The reply goes back through the provider.", "ref": "main.py:30" }
+      ] }
+  ]
+}
+</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById('canvas-data').textContent);
+  const COL_W = 320, ROW_H = 150, NW = 210, NH = 64, PAD = 80, TOP = 90;
+  const KINDS = ['actor', 'external', 'service', 'module', 'store', 'queue'];
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const nodes = new Map(D.nodes.map(n => [n.id, Object.assign({}, n, { x: PAD + n.col * COL_W, y: TOP + n.row * ROW_H })]));
+  const maxCol = Math.max(0, ...D.nodes.map(n => n.col)), maxRow = Math.max(0, ...D.nodes.map(n => n.row));
+  const W = PAD * 2 + maxCol * COL_W + NW, H = TOP + maxRow * ROW_H + NH + 50;
+  const stage = document.getElementById('stage'), vp = document.getElementById('vp'), panel = document.getElementById('panel');
+  const state = { flow: null, step: -1, node: null };
+  let geoms = [];
+
+  // ---- geometry ----
+  function anchor(n, o) {
+    const cx = n.x + NW / 2, cy = n.y + NH / 2, dx = o.x - n.x, dy = o.y - n.y;
+    if (Math.abs(dx) * NH >= Math.abs(dy) * NW) return { x: dx > 0 ? n.x + NW : n.x, y: cy, dx: Math.sign(dx), dy: 0 };
+    return { x: cx, y: dy > 0 ? n.y + NH : n.y, dx: 0, dy: Math.sign(dy) };
+  }
+  function blocked(a, b) {
+    if (a.row !== b.row || Math.abs(a.col - b.col) < 2) return false;
+    const lo = Math.min(a.col, b.col), hi = Math.max(a.col, b.col);
+    return D.nodes.some(n => n.row === a.row && n.col > lo && n.col < hi);
+  }
+  function geom(e) {
+    const a = nodes.get(e.from), b = nodes.get(e.to);
+    let P, Q, c1, c2;
+    if (a === b) {
+      const h = 50 + e.loop * 24, x1 = a.x + NW * 0.3, x2 = a.x + NW * 0.7;
+      P = { x: x1, y: a.y }; Q = { x: x2, y: a.y }; c1 = { x: x1, y: a.y - h }; c2 = { x: x2, y: a.y - h };
+    } else if (blocked(a, b)) {
+      const lift = 70 + Math.abs(e.off) * 1.5 + (e.off > 0 ? 18 : 0);
+      P = { x: a.x + NW / 2 + e.off, y: a.y }; Q = { x: b.x + NW / 2 + e.off, y: b.y };
+      c1 = { x: P.x, y: a.y - lift }; c2 = { x: Q.x, y: b.y - lift };
+    } else {
+      const p = anchor(a, b), q = anchor(b, a);
+      const sh = pt => pt.dx ? Object.assign(pt, { y: pt.y + e.off }) : Object.assign(pt, { x: pt.x + e.off });
+      P = sh(p); Q = sh(q);
+      const k = Math.max(40, Math.hypot(Q.x - P.x, Q.y - P.y) * 0.35);
+      c1 = { x: P.x + p.dx * k, y: P.y + p.dy * k }; c2 = { x: Q.x + q.dx * k, y: Q.y + q.dy * k };
+    }
+    return {
+      d: `M${P.x},${P.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${Q.x},${Q.y}`,
+      mx: (P.x + 3 * c1.x + 3 * c2.x + Q.x) / 8, my: (P.y + 3 * c1.y + 3 * c2.y + Q.y) / 8
+    };
+  }
+  function edgesFor(flow) {
+    let list;
+    if (flow) list = flow.steps.map((s, i) => Object.assign({}, s, { i }));
+    else {
+      const seen = new Map();
+      D.flows.forEach(f => f.steps.forEach(s => {
+        const k = s.from + '>' + s.to;
+        if (!seen.has(k)) seen.set(k, { from: s.from, to: s.to, inferred: s.inferred, i: -1 });
+        else if (!s.inferred) seen.get(k).inferred = false;
+      }));
+      list = [...seen.values()];
+    }
+    const count = {}, used = {}, loops = {};
+    list.forEach(e => { if (e.from !== e.to) { const k = [e.from, e.to].sort().join('|'); count[k] = (count[k] || 0) + 1; } });
+    list.forEach(e => {
+      if (e.from === e.to) { e.loop = loops[e.from] = (loops[e.from] == null ? 0 : loops[e.from] + 1); e.off = 0; return; }
+      const k = [e.from, e.to].sort().join('|'), idx = used[k] = (used[k] == null ? 0 : used[k] + 1);
+      e.off = (idx - (count[k] - 1) / 2) * 18;
+    });
+    return list;
+  }
+
+  // ---- render ----
+  function render() {
+    const flow = state.flow ? D.flows.find(f => f.id === state.flow) : null;
+    const cur = flow && state.step >= 0 ? flow.steps[state.step] : null;
+    const inFlow = new Set(flow ? flow.steps.flatMap(s => [s.from, s.to]) : []);
+    const edges = edgesFor(flow);
+    let z = '', e = '', l = '', n = '';
+    (D.zones || []).forEach(zn => {
+      const x1 = PAD + zn.from * COL_W - 30, x2 = PAD + zn.to * COL_W + NW + 30;
+      z += `<g class="zone"><rect x="${x1}" y="10" width="${x2 - x1}" height="${H - 10}" rx="16"/><text x="${x1 + 16}" y="36">${esc(zn.label)}</text></g>`;
+    });
+    geoms = [];
+    edges.forEach(ed => {
+      const g = geom(ed);
+      let cls = flow ? (cur ? (ed.i === state.step ? 'cur' : ed.i < state.step ? 'past' : 'future') : 'all') : 'ov';
+      if (flow) geoms[ed.i] = g;
+      e += `<path class="edge ${cls}${ed.inferred ? ' inf' : ''}" d="${g.d}" marker-end="url(#${cls === 'cur' ? 'c' : 'a'})"/>`;
+      if (flow) {
+        const showTag = !cur || cls === 'cur', tw = String(ed.label || '').length * 6.8 + 16, below = ed.off > 0;
+        l += `<g class="lbl ${cls}" data-step="${ed.i}" transform="translate(${g.mx},${g.my})"><circle r="11"/><text class="num">${ed.i + 1}</text>` +
+          (showTag && ed.label ? `<g class="tag"><rect x="${-tw / 2}" y="${below ? 15 : -37}" width="${tw}" height="22" rx="6"/><text x="0" y="${below ? 26 : -26}">${esc(ed.label)}</text></g>` : '') + `</g>`;
+      }
+    });
+    nodes.forEach(nd => {
+      const cls = [flow && !inFlow.has(nd.id) ? 'dim' : '', cur && (cur.from === nd.id || cur.to === nd.id) ? 'hot' : '', state.node === nd.id ? 'sel' : ''].join(' ');
+      n += `<g class="node ${cls}" data-id="${esc(nd.id)}" transform="translate(${nd.x},${nd.y})"><rect class="box" width="${NW}" height="${NH}" rx="10"/>` +
+        `<rect x="8" y="8" width="5" height="${NH - 16}" rx="2.5" style="fill:var(--k-${esc(nd.kind)})"/>` +
+        `<text class="kind" x="22" y="24">${esc(nd.kind)}</text><text class="name" x="22" y="46">${esc(nd.label)}</text></g>`;
+    });
+    vp.innerHTML = z + e + n + l;
+    renderPanel(flow);
+  }
+  const name = id => (nodes.get(id) || {}).label || id;
+  function renderPanel(flow) {
+    let h = `<h1>${esc(D.title)}</h1><p class="sub">${esc(D.subtitle)}</p><div class="flows"><button data-flow="" class="${flow ? '' : 'on'}">Overview</button>` +
+      D.flows.map(f => `<button data-flow="${esc(f.id)}" class="${flow && flow.id === f.id ? 'on' : ''}">${esc(f.label)}</button>`).join('') + `</div>`;
+    const nd = state.node && nodes.get(state.node);
+    if (nd) {
+      const touches = D.flows.filter(f => f.steps.some(s => s.from === nd.id || s.to === nd.id)).map(f => f.label);
+      h += `<div class="card"><button class="close" data-close title="Close">&times;</button><span class="label-sm">${esc(nd.kind)}</span><h2>${esc(nd.label)}</h2><p>${esc(nd.summary)}</p>` +
+        (nd.files && nd.files.length ? `<span class="label-sm">Files</span><ul>${nd.files.map(f => `<li><code>${esc(f)}</code></li>`).join('')}</ul>` : '') +
+        (nd.notes ? `<span class="label-sm">Notes</span><p>${esc(nd.notes)}</p>` : '') +
+        (touches.length ? `<span class="label-sm">Appears in</span><ul>${touches.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '') + `</div>`;
+    }
+    if (flow) {
+      h += `<div class="trigger"><span>Trigger</span>${esc(flow.trigger)}</div><div class="stepper"><button data-nav="-1" title="Previous (&larr;)">&#9664;</button>` +
+        `<span>${state.step < 0 ? 'All steps' : `Step ${state.step + 1} of ${flow.steps.length}`}</span><button data-nav="1" title="Next (&rarr;)">&#9654;</button></div><ol class="steps">` +
+        flow.steps.map((s, i) => `<li data-step="${i}" class="${i === state.step ? 'on' : ''}"><div class="hd"><b>${i + 1}</b><span>${esc(name(s.from))} &rarr; ${esc(name(s.to))}</span></div>` +
+          `<div class="lb">${esc(s.label)}${s.inferred ? '<em class="inf">inferred</em>' : ''}</div>` +
+          (i === state.step ? `<p>${esc(s.detail)}</p>${s.ref ? `<code>${esc(s.ref)}</code>` : ''}` : '') + `</li>`).join('') + `</ol>`;
+    } else {
+      h += `<p class="hint">Pick a flow above to step through it. Click any box for details. Dashed arrows are inferred, not seen in code.</p>`;
+    }
+    const present = KINDS.filter(k => D.nodes.some(nn => nn.kind === k));
+    h += `<div class="legend">${present.map(k => `<span><i style="background:var(--k-${k})"></i>${k}</span>`).join('')}</div>`;
+    panel.innerHTML = h;
+    const on = panel.querySelector('.steps li.on');
+    if (on) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  // ---- state changes ----
+  function setFlow(id) { state.flow = id || null; state.step = -1; render(); fit(true); }
+  function setStep(i) {
+    const flow = D.flows.find(f => f.id === state.flow);
+    if (!flow) return;
+    state.step = Math.max(-1, Math.min(flow.steps.length - 1, i));
+    render();
+    const g = geoms[state.step];
+    if (g) { const r = stage.getBoundingClientRect(); view.x = r.width / 2 - g.mx * view.s; view.y = r.height / 2 - g.my * view.s; apply(true); }
+  }
+  panel.addEventListener('click', ev => {
+    const t = ev.target.closest('[data-flow],[data-nav],[data-step],[data-close]');
+    if (!t) return;
+    if (t.hasAttribute('data-flow')) setFlow(t.dataset.flow);
+    else if (t.hasAttribute('data-nav')) setStep(state.step + Number(t.dataset.nav));
+    else if (t.hasAttribute('data-close')) { state.node = null; render(); }
+    else setStep(Number(t.dataset.step) === state.step ? -1 : Number(t.dataset.step));
+  });
+
+  // ---- viewport ----
+  const view = { s: 1, x: 0, y: 0 };
+  function apply(anim) { vp.classList.toggle('anim', !!anim); vp.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.s})`; }
+  function fit(anim) {
+    const r = stage.getBoundingClientRect();
+    const s = Math.min(r.width / W, r.height / H, 1.3) * 0.94;
+    Object.assign(view, { s, x: (r.width - W * s) / 2, y: (r.height - H * s) / 2 }); apply(anim);
+  }
+  function zoomAt(px, py, f) {
+    const s = Math.max(0.15, Math.min(4, view.s * f)), k = s / view.s;
+    Object.assign(view, { x: px - (px - view.x) * k, y: py - (py - view.y) * k, s }); apply(false);
+  }
+  const zoomCenter = f => { const r = stage.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, f); };
+  stage.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const r = stage.getBoundingClientRect();
+    zoomAt(ev.clientX - r.left, ev.clientY - r.top, Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0015)));
+  }, { passive: false });
+  const ptrs = new Map(); let moved = 0, pinchD = 0;
+  stage.addEventListener('pointerdown', ev => {
+    if (ev.target.closest('.tools')) return;
+    ptrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); moved = 0;
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); }
+    stage.classList.add('dragging');
+  });
+  window.addEventListener('pointermove', ev => {
+    const p = ptrs.get(ev.pointerId); if (!p) return;
+    const dx = ev.clientX - p.x, dy = ev.clientY - p.y; p.x = ev.clientX; p.y = ev.clientY;
+    if (ptrs.size === 1) { view.x += dx; view.y += dy; apply(false); moved += Math.abs(dx) + Math.abs(dy); }
+    else if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), r = stage.getBoundingClientRect();
+      if (pinchD) zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinchD);
+      pinchD = d; moved += 10;
+    }
+  });
+  const up = ev => { ptrs.delete(ev.pointerId); if (ptrs.size < 2) pinchD = 0; if (!ptrs.size) stage.classList.remove('dragging'); };
+  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  document.getElementById('svg').addEventListener('click', ev => {
+    if (moved > 5) return;
+    const lb = ev.target.closest('.lbl'), nd = ev.target.closest('.node');
+    if (lb) setStep(Number(lb.dataset.step));
+    else if (nd) { state.node = state.node === nd.dataset.id ? null : nd.dataset.id; render(); }
+    else if (state.node) { state.node = null; render(); }
+  });
+  document.querySelector('.tools').addEventListener('click', ev => {
+    const t = ev.target.closest('[data-tool]'); if (!t) return;
+    const tool = t.dataset.tool;
+    if (tool === 'in') zoomCenter(1.25); else if (tool === 'out') zoomCenter(0.8); else if (tool === 'fit') fit(true);
+    else {
+      const root = document.documentElement, dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      root.dataset.theme = dark ? 'light' : 'dark';
+    }
+  });
+  window.addEventListener('keydown', ev => {
+    if (ev.target.closest('input,textarea,select')) return;
+    const k = ev.key;
+    if (k === 'ArrowRight' || k === 'j') setStep(state.step + 1);
+    else if (k === 'ArrowLeft' || k === 'k') setStep(state.step - 1);
+    else if (k === 'Escape') { if (state.node) { state.node = null; render(); } else setStep(-1); }
+    else if (k === 'f' || k === 'F') fit(true);
+    else if (k === '+' || k === '=') zoomCenter(1.25);
+    else if (k === '-') zoomCenter(0.8);
+    else if (/^[0-9]$/.test(k)) { const i = Number(k); if (i === 0) setFlow(null); else if (D.flows[i - 1]) setFlow(D.flows[i - 1].id); }
+    else return;
+    ev.preventDefault();
+  });
+  let userMoved = false;
+  stage.addEventListener('pointerdown', () => { userMoved = true; });
+  stage.addEventListener('wheel', () => { userMoved = true; });
+  new ResizeObserver(() => { if (!userMoved) fit(false); }).observe(stage);
+  render(); fit(false);
+})();
+</script>
+</body>
+</html>
