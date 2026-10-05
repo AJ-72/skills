@@ -76,26 +76,6 @@ The trace works on any language. The skill also lists where each of these stacks
 
 Monoliths are drawn as layers (controller → service → DAO → database). Games are drawn as subsystems laid out input → logic → physics → presentation → persistence.
 
-### How it differs from archify
-
-[archify](https://www.skills.sh/tt-a1i/archify/archify) is a mature, general-purpose diagramming skill. It has five diagram types (architecture, workflow, sequence, dataflow, lifecycle), accepts Mermaid input, works for non-technical subjects too, and exports PNG/SVG/WebM. It also cites source evidence for a repo, pinned to a commit. If you want polished, exportable diagrams of anything, use archify.
-
-architecture-canvas does one narrower job: **"what happens, hop by hop, when X occurs in this codebase?"**
-
-| | architecture-canvas | archify |
-|---|---|---|
-| Main question | How does an event travel through *this* code? | Any diagram: systems, processes, pipelines, states, everyday plans |
-| Shape of output | **One component map with several flows layered on it.** Pick a flow and step through it with ←/→ | One diagram per request, choosing one of 5 types |
-| Reading a flow | Step panel: what happens, why it matters, `file:line`, with the hop highlighted on the map | Relationships and labels on the diagram, with optional trace animation |
-| Unseen hops | Drawn **dashed** and labelled `inferred`, with what the guess rests on | Recorded as explicit unknowns next to the claim |
-| Staying current | Saves to `docs/architecture/` and **refreshes in place** on the next run, keeping node ids stable, so changes show up in git diffs | Each request gets a new timestamped `.archify/` folder, so earlier versions are kept |
-| Stack guidance | Lists where wiring hides in JSP/.NET config, stored procedures, Godot `.tscn`, Unity YAML/GUIDs | General repository-tracing guidance |
-| Footprint | 3 files: `SKILL.md`, an HTML template, a ~130-line Python validator (standard library only) | Node.js CLI with schemas, references, browser checks and exports |
-| Evidence check | Validator checks refs against the working tree, including uncommitted changes | Evidence verified against the pinned commit |
-| Exports and themes | Light and dark themes, plus the HTML file itself | Light and dark themes, PNG/JPEG/WebP/SVG/WebM |
-
-Because it's small, it's cheap to run and easy for smaller models to follow (for example Gemini Flash or GLM in OpenCode). It's also easy to fork for your own stack.
-
 ### Requirements
 
 - An agent that supports `SKILL.md` and can read files and run shell commands (Claude Code, OpenCode, and others). On claude.ai with pasted code, the validator runs without repo reference checks.
